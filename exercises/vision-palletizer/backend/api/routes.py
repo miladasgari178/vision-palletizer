@@ -143,14 +143,24 @@ async def reset_palletizer():
     global palletizer
     if palletizer is None:
         raise HTTPException(status_code=400, detail="Palletizer not configured")
-    elif palletizer.current_state.name == "IDLE":
-        return CommandResponse(success=True, message="Palletizer already in IDLE state")
 
-    success = palletizer.reset()
-    if not success:
-        raise HTTPException(status_code=400, detail="Failed to reset palletizer")
+    was_idle_before = palletizer.current_state.name == "IDLE"
 
-    return CommandResponse(success=True, message="Palletizer reset successfully")
+    # If not idle, clear fault first.
+    if not was_idle_before:
+        success = palletizer.reset()
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to reset palletizer")
+
+    # Reset endpoint should always send robot to home.
+    homed = palletizer.motion_controller.move_to_home()
+    if not homed:
+        raise HTTPException(status_code=500, detail="Palletizer reset, but failed to move robot to home")
+
+    if was_idle_before:
+        return CommandResponse(success=True, message="Palletizer already IDLE; robot moved to home")
+
+    return CommandResponse(success=True, message="Palletizer reset and robot moved to home")
 
 
 @router.get("/status", response_model=StatusResponse)
