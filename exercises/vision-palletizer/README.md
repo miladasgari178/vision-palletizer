@@ -123,7 +123,7 @@ A visual demonstration of the system (robot motion, coordinate transformation, a
 
 👉 [Watch the demo](https://www.youtube.com/watch?v=u5MS-ReyJCU)
 
-> The video shows the full pipeline: camera detections → coordinate transformation → UR5e pick-and-place into a grid.
+> The video shows UR5e pick-and-place into a grid.
 
 ---
 
