@@ -1,8 +1,5 @@
 """
-Palletizing Grid Calculations
-============================
-
-Calculate place positions for boxes in an N×M grid pattern.
+Palletizing Grid Calculations which calculate place positions for boxes in an N×M grid pattern.
 """
 
 from typing import List, Tuple
@@ -28,4 +25,15 @@ def calculate_place_positions(
     Returns:
         List of (x, y, z) TCP target positions, ordered for row-by-row filling.
     """
-    raise NotImplementedError("calculate_place_positions")
+    positions = []
+    width, depth, height = box_size_mm
+    origin_x, origin_y, origin_z = pallet_origin_mm
+
+    for row in range(rows):
+        for col in range(cols):
+            x = origin_x + col * (width + spacing_mm)
+            y = origin_y + row * (depth + spacing_mm)
+            z = origin_z + height / 2  # place at box center height
+            positions.append((x, y, z))
+
+    return positions

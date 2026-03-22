@@ -5,11 +5,14 @@ Vision Palletizer Backend
 FastAPI application for coordinating UR5e robot palletizing operations.
 """
 
+import os
+
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
 from robot.connection import RobotConnection
 from api.routes import router as palletizer_router
+from config.config import ROBOT_POSE_LOG_DIR, ROBOT_POSE_LOG_PATH
 
 
 # Global robot connection instance
@@ -20,6 +23,12 @@ robot_connection: RobotConnection | None = None
 async def lifespan(app: FastAPI):
     """Manage application lifecycle - connect/disconnect robot."""
     global robot_connection
+
+    # Startup: ensure pose logging path exists
+    os.makedirs(ROBOT_POSE_LOG_DIR, exist_ok=True)
+    if not os.path.exists(ROBOT_POSE_LOG_PATH):
+        with open(ROBOT_POSE_LOG_PATH, "w", encoding="utf-8") as file:
+            file.write("")
     
     # Startup: Initialize robot connection (will auto-reconnect later if needed)
     robot_connection = RobotConnection()

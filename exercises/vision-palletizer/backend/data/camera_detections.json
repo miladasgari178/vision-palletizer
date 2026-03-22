@@ -2,28 +2,28 @@
   "description": "Mocked output from an upstream vision system. Each detection represents a box detected in the camera frame.",
   "detections": [
     {
-      "x_mm": 50.0,
-      "y_mm": -30.0,
-      "z_mm": 0.0,
-      "yaw_deg": 0.0
-    },
-    {
       "x_mm": 120.0,
       "y_mm": 45.0,
-      "z_mm": 0.0,
+      "z_mm": -400.0,
       "yaw_deg": 15.0
     },
     {
       "x_mm": -25.0,
       "y_mm": 80.0,
-      "z_mm": 0.0,
+      "z_mm": -400.0,
       "yaw_deg": -10.0
     },
     {
       "x_mm": 90.0,
       "y_mm": -60.0,
-      "z_mm": 0.0,
+      "z_mm": -400.0,
       "yaw_deg": 5.0
+    },
+    {
+      "x_mm": 50.0,
+      "y_mm": -30.0,
+      "z_mm": -400.0,
+      "yaw_deg": 0.0
     }
   ]
 }
