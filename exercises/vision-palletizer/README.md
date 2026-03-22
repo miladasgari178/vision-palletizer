@@ -10,7 +10,6 @@ A backend service that coordinates a **Universal Robots (UR5e)** to pick items f
 - [Quick Start](#quick-start)
 - [Technical Specifications](#technical-specifications)
 - [Resources](#resources)
-- [Submission](#submission)
 
 ---
 
@@ -116,23 +115,33 @@ A mock vision output is provided in `backend/data/camera_detections.json`:
 
 ---
 
-## Submission
+## 🎥 Visualization & Assumptions
 
-1. Push your solution to a **Git repository** (GitHub/GitLab)
-2. Document your approach and any assumptions made
-3. **Required:** Screen recording or GIF showing a 2×2 palletizing sequence in URSim
+### Project Visualization
 
-### Evaluation Weights
+A visual demonstration of the system (robot motion, coordinate transformation, and palletizing behavior) can be found here:
 
-| Criteria | Weight |
-|----------|--------|
-| Correct coordinate transformation math | 35% |
-| Working palletizing sequence in URSim | 35% |
-| Code quality and architecture | 15% |
-| Bonus features | 15% |
+👉 [Watch the demo](https://www.youtube.com/watch?v=u5MS-ReyJCU)
+
+> The video shows the full pipeline: camera detections → coordinate transformation → UR5e pick-and-place into a grid.
 
 ---
 
-## Questions?
+### Assumptions
 
-If you have any questions regarding the hardware specs or the Vention ecosystem, please reach out to the MachineApps team.
+The following assumptions were made in this implementation:
+
+1. **Workspace Validation**  
+   A simple workspace check is performed before executing robot motions. This is implemented as a bounded 3D box around the robot for simplicity. More advanced reachability checks (e.g., inverse kinematics validation via URScript) could be integrated for improved accuracy.
+
+2. **Logging System**  
+   A log file is initialized when the backend server starts. This file records all successfully placed box positions for traceability and debugging.
+
+3. **Configurable Parameters**  
+   Robot workspace limits (X, Y, Z) and motion safety parameters — including velocity, acceleration, `FALLBACK_DOWNWARD_ORIENTATION`, and `APPROACH_HEIGHT_OFFSET` — are configurable via `config.py`.
+
+4. **Singularity Handling**  
+   Singularities are not explicitly handled when executing Cartesian motions (`moveL`) through RTDE. Therefore, input box positions (from the vision system JSON) must be defined carefully relative to the robot base and home position to avoid unstable or undefined robot behavior.
+
+---
+
