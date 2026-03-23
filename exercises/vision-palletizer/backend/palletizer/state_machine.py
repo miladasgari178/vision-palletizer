@@ -38,6 +38,19 @@ class PalletizerStateMachine(StateMachine):
         self.motion_controller: MotionController = motion_controller
         self.context = PalletizerContext()
         self._stop_requested = threading.Event()
+        self._detections_cache = None
+
+    def _get_cached_detections(self):
+        """Load detections once per cycle and reuse them across pick steps."""
+        if self._detections_cache is not None:
+            return self._detections_cache
+
+        with open(DETECTED_BOX_POSITION_PATH, "r") as file:
+            box_places = json.load(file)
+            camera_detections = CameraDetections(**box_places)
+
+        self._detections_cache = camera_detections.detections
+        return self._detections_cache
 
     def request_stop(self) -> None:
         """Request graceful stop at the next safe transition point."""
@@ -83,7 +96,7 @@ class PalletizerStateMachine(StateMachine):
                 return False
             raise
 
-    def _append_pose_log(self, stage: str, pose_mm: list[float]) -> None:
+    def _append_pose_log(self, stage: str, pose: list[float]) -> None:
         """Append a calculated robot pose entry to the pose log file."""
         os.makedirs(os.path.dirname(os.path.abspath(ROBOT_POSE_LOG_PATH)), exist_ok=True)
         entry = {
@@ -92,9 +105,12 @@ class PalletizerStateMachine(StateMachine):
             "box_index": self.context.current_box_index,
             "state": self.current_state.name,
             "pose_mm": {
-                "x": float(pose_mm[0]),
-                "y": float(pose_mm[1]),
-                "z": float(pose_mm[2]),
+                "x": float(pose[0]),
+                "y": float(pose[1]),
+                "z": float(pose[2]),
+                "rx": float(pose[3]) if len(pose) > 3 else None,
+                "ry": float(pose[4]) if len(pose) > 3 else None,
+                "rz": float(pose[5]) if len(pose) > 3 else None,
             }
         }
 
@@ -147,6 +163,7 @@ class PalletizerStateMachine(StateMachine):
         self.context.total_boxes = rows * cols
         self.context.current_box_index = 0
         self.context.place_positions = []
+        self._detections_cache = None
         return True
     
     def begin(self) -> bool:
@@ -155,6 +172,7 @@ class PalletizerStateMachine(StateMachine):
             return False
         try:
             self.clear_stop_request()
+            self._detections_cache = None
             self.trigger("start")
             return True
         except Exception:
@@ -241,12 +259,7 @@ class PalletizerStateMachine(StateMachine):
                 self.fault("Pick failed: current_box_index out of range")
                 return
 
-            # Load camera detections from file
-            with open (DETECTED_BOX_POSITION_PATH, "r") as file:
-                box_places = json.load(file)
-                camera_detections = CameraDetections(**box_places)
-            
-            detections = camera_detections.detections
+            detections = self._get_cached_detections()
             if not detections:
                 self.fault("Pick failed: no camera detections available")
                 return
@@ -259,14 +272,16 @@ class PalletizerStateMachine(StateMachine):
             cam_x_mm = float(det.x_mm)
             cam_y_mm = float(det.y_mm)
             cam_z_mm = float(det.z_mm)
+            cam_yaw_deg = float(det.yaw_deg)
 
             # Transform camera coordinates to robot frame (mm)
-            robot_pick_mm = camera_to_robot(np.array([cam_x_mm, cam_y_mm, cam_z_mm]))
+            robot_pose_mm = camera_to_robot(np.array([cam_x_mm, cam_y_mm, cam_z_mm]), cam_yaw_deg)
+            robot_pick_mm = robot_pose_mm[:3]
 
             # Motion controller expects meters
             self._append_pose_log(
                 stage="pick_calculated",
-                pose_mm=[float(robot_pick_mm[0]), float(robot_pick_mm[1]), float(robot_pick_mm[2])]
+                pose=robot_pose_mm.tolist(),
             )
             
             # Convert to meters for motion controller
@@ -274,7 +289,10 @@ class PalletizerStateMachine(StateMachine):
             self.context.pick_position = tuple(robot_pick)
 
             # Execute pick motion
-            motion_completed = self.motion_controller.move_to_pick(position=list(float(x) for x in robot_pick))
+            motion_completed = self.motion_controller.move_to_pick(
+                position=list(float(x) for x in robot_pick[0:3]),
+                orientation=list(float(r) for r in robot_pose_mm[3:6]) if len(robot_pose_mm) > 3 else None,
+            )
             if not motion_completed:
                 self.fault("Pick failed: motion controller reported failure")
                 return
@@ -326,7 +344,7 @@ class PalletizerStateMachine(StateMachine):
             ]
             self._append_pose_log(
                 stage="place_calculated",
-                pose_mm=[float(place_position[0]), float(place_position[1]), float(place_position[2])],
+                pose=[float(place_position[0]), float(place_position[1]), float(place_position[2])],
             )
             motion_completed = self.motion_controller.move_to_place(
                 position=place_position_m

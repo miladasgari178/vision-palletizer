@@ -282,7 +282,10 @@ async def test_transform(detection: VisionDetection):
         ])
         
         # Transform to robot frame
-        robot_point_mm = camera_to_robot(camera_point_mm)
+        robot_pose_mm = camera_to_robot(
+            point_camera=camera_point_mm, 
+            cam_yaw_deg=detection.yaw_deg if detection.yaw_deg is not None else 0.0
+        )
         
         return TransformResponse(
             success=True,
@@ -290,11 +293,15 @@ async def test_transform(detection: VisionDetection):
                 "x_mm": detection.x_mm,
                 "y_mm": detection.y_mm,
                 "z_mm": detection.z_mm,
+                "yaw_deg": detection.yaw_deg if detection.yaw_deg is not None else 0.0,
             },
             robot_frame={
-                "x_mm": float(robot_point_mm[0]),
-                "y_mm": float(robot_point_mm[1]),
-                "z_mm": float(robot_point_mm[2]),
+                "x_mm": float(robot_pose_mm[0]),
+                "y_mm": float(robot_pose_mm[1]),
+                "z_mm": float(robot_pose_mm[2]),
+                "rx_rad": float(robot_pose_mm[3]),
+                "ry_rad": float(robot_pose_mm[4]),
+                "rz_rad": float(robot_pose_mm[5]),
             },
         )
     except Exception as error:

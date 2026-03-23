@@ -8,6 +8,7 @@ from config.config import (
     CAMERA_ROLL_DEG,
     CAMERA_PITCH_DEG,
     CAMERA_YAW_DEG,
+    FALLBACK_DOWNWARD_ORIENTATION,
 )
 
 
@@ -79,15 +80,75 @@ def build_homogeneous_transform(
     return transformation_matrix
 
 
-def camera_to_robot(point_camera: np.ndarray) -> np.ndarray:
+def axis_angle_to_rotation_matrix(rotation_vector: np.ndarray) -> np.ndarray:
+    """Convert an axis-angle rotation vector to a 3x3 rotation matrix."""
+    angle = np.linalg.norm(rotation_vector)
+    if angle < 1e-12:
+        return np.eye(3)
+
+    axis = rotation_vector / angle
+    x, y, z = axis
+    skew = np.array([
+        [0.0, -z, y],
+        [z, 0.0, -x],
+        [-y, x, 0.0],
+    ])
+    return np.eye(3) + np.sin(angle) * skew + (1.0 - np.cos(angle)) * (skew @ skew)
+
+
+def rotation_matrix_to_axis_angle(rotation_matrix: np.ndarray) -> np.ndarray:
+    """Convert a 3x3 rotation matrix to an axis-angle rotation vector."""
+    trace = float(np.trace(rotation_matrix))
+    cos_angle = np.clip((trace - 1.0) / 2.0, -1.0, 1.0)
+    angle = float(np.arccos(cos_angle))
+
+    if angle < 1e-12:
+        return np.zeros(3, dtype=float)
+
+    if np.isclose(angle, np.pi, atol=1e-6):
+        diagonal = np.diag(rotation_matrix)
+        axis = np.sqrt(np.maximum((diagonal + 1.0) / 2.0, 0.0))
+
+        if axis[0] > 1e-6:
+            axis[1] = rotation_matrix[0, 1] / (2.0 * axis[0])
+            axis[2] = rotation_matrix[0, 2] / (2.0 * axis[0])
+        elif axis[1] > 1e-6:
+            axis[0] = rotation_matrix[0, 1] / (2.0 * axis[1])
+            axis[2] = rotation_matrix[1, 2] / (2.0 * axis[1])
+        else:
+            axis[0] = rotation_matrix[0, 2] / (2.0 * axis[2])
+            axis[1] = rotation_matrix[1, 2] / (2.0 * axis[2])
+
+        axis_norm = np.linalg.norm(axis)
+        if axis_norm < 1e-12:
+            axis = np.array([0.0, 1.0, 0.0], dtype=float)
+        else:
+            axis = axis / axis_norm
+        return axis * angle
+
+    axis = np.array([
+        rotation_matrix[2, 1] - rotation_matrix[1, 2],
+        rotation_matrix[0, 2] - rotation_matrix[2, 0],
+        rotation_matrix[1, 0] - rotation_matrix[0, 1],
+    ], dtype=float) / (2.0 * np.sin(angle))
+    return axis * angle
+
+
+def camera_to_robot(
+    point_camera: np.ndarray,
+    cam_yaw_deg: float,
+) -> np.ndarray:
     """
-    Transform a point from camera frame to robot base frame.
+    Transform a point and orientation from camera frame to robot base frame.
     
     Args:
         point_camera: [x, y, z] coordinates in camera frame (mm)
+        cam_yaw_deg: Yaw angle in camera frame (degrees).
     
     Returns:
-        [x, y, z] coordinates in robot base frame (mm)
+        [x, y, z, rx, ry, rz] as 6-element numpy array where:
+            x, y, z are coordinates in robot base frame (mm)
+            rx, ry, rz are axis-angle orientation values in robot base frame (radians)
     """
 
     # Camera pose in robot frame
@@ -111,7 +172,12 @@ def camera_to_robot(point_camera: np.ndarray) -> np.ndarray:
     # Transform the point to robot frame
     point_robot_h = transformation_matrix @ point_h
 
-    return point_robot_h[:3]
+    point_robot = point_robot_h[:3]
+
+    robot_orientation = camera_to_robot_orientation(cam_yaw_deg)
+    
+    # Return 6-element array: [x, y, z, rx, ry, rz]
+    return np.concatenate([point_robot, robot_orientation])
 
 
 def robot_to_camera(point_robot: np.ndarray) -> np.ndarray:
@@ -151,54 +217,23 @@ def robot_to_camera(point_robot: np.ndarray) -> np.ndarray:
     return point_camera_h[:3]
 
 
-def rotation_matrix_to_euler(rotation_matrix: np.ndarray) -> np.ndarray:
-    """Convert 3x3 rotation matrix to roll, pitch, yaw in radians.
-    
+def camera_to_robot_orientation(cam_yaw_deg: float) -> np.ndarray:
+    """
+    Convert camera-frame box yaw to robot TCP axis-angle orientation.
+
+    The robot motion layer expects axis-angle orientation, and the TCP should
+    stay tool-down during picking. Positive camera yaw is inverted because the
+    TCP approaches the box from the opposite direction of the camera view.
+
     Args:
-        rotation_matrix: 3x3 rotation matrix
-    
+        cam_yaw_deg: Box yaw in camera frame (degrees).
+
     Returns:
-        [roll, pitch, yaw] in radians
+        [rx, ry, rz] axis-angle orientation in robot frame (radians).
     """
-    if abs(rotation_matrix[2,0]) < 1.0 - 1e-6:
-        pitch = -np.arcsin(rotation_matrix[2,0])
-        roll = np.arctan2(rotation_matrix[2,1]/np.cos(pitch), rotation_matrix[2,2]/np.cos(pitch))
-        yaw = np.arctan2(rotation_matrix[1,0]/np.cos(pitch), rotation_matrix[0,0]/np.cos(pitch))
-    else:
-        pitch = np.pi/2 if rotation_matrix[2,0] <= -1.0 else -np.pi/2
-        roll = 0.0
-        yaw = np.arctan2(-rotation_matrix[0,1], rotation_matrix[1,1])
-
-
-    return np.array([roll, pitch, yaw], dtype=float)
-
-
-def camera_to_robot_orientation(camera_orientation: np.ndarray) -> np.ndarray:
-    """
-    Convert Euler angles from camera frame to robot base frame.
-    
-    Args:
-        camera_orientation: [roll, pitch, yaw] in CAMERA frame (radians)
-    
-    Returns:
-        [roll, pitch, yaw] in ROBOT frame (radians)
-    """
-    # Rotation of camera in robot frame
-    roll = np.deg2rad(CAMERA_ROLL_DEG)
-    pitch = np.deg2rad(CAMERA_PITCH_DEG)
-    yaw = np.deg2rad(CAMERA_YAW_DEG)
-    rotation_matrix_base_camera = build_rotation_matrix(roll, pitch, yaw)
-
-    # Rotation in camera frame
-    rotation_matrix_camera_obj = build_rotation_matrix(
-        camera_orientation[0],
-        camera_orientation[1],
-        camera_orientation[2],
+    downward_rotation = axis_angle_to_rotation_matrix(
+        np.array(FALLBACK_DOWNWARD_ORIENTATION, dtype=float)
     )
-
-    # Transform to robot frame
-    rotation_matrix_robot_obj = rotation_matrix_base_camera @ rotation_matrix_camera_obj
-
-    # Extract Euler angles in robot frame
-    robot_orientation = rotation_matrix_to_euler(rotation_matrix_robot_obj)
-    return robot_orientation
+    yaw_rotation = build_rotation_matrix(0.0, 0.0, -np.deg2rad(cam_yaw_deg))
+    tcp_rotation = yaw_rotation @ downward_rotation
+    return rotation_matrix_to_axis_angle(tcp_rotation)

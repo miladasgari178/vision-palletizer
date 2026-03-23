@@ -11,9 +11,11 @@ import numpy as np
 import pytest
 
 from transforms.coordinate import (
+    axis_angle_to_rotation_matrix,
     build_rotation_matrix,
     build_homogeneous_transform,
     camera_to_robot,
+    camera_to_robot_orientation,
     robot_to_camera,
 )
 from config.config import (
@@ -23,6 +25,7 @@ from config.config import (
     CAMERA_ROLL_DEG,
     CAMERA_PITCH_DEG,
     CAMERA_YAW_DEG,
+    FALLBACK_DOWNWARD_ORIENTATION,
 )
 
 
@@ -124,9 +127,9 @@ class TestCameraToRobot:
         A point at the camera origin [0,0,0] must map exactly to the
         camera's position in the robot frame (pure translation).
         """
-        result = camera_to_robot(np.array([0.0, 0.0, 0.0]))
-        expected = np.array([CAMERA_POSE_X_MM, CAMERA_POSE_Y_MM, CAMERA_POSE_Z_MM])
-        np.testing.assert_array_almost_equal(result, expected)
+        result = camera_to_robot(np.array([0.0, 0.0, 0.0]), cam_yaw_deg=0.0)
+        expected_pos = np.array([CAMERA_POSE_X_MM, CAMERA_POSE_Y_MM, CAMERA_POSE_Z_MM])
+        np.testing.assert_array_almost_equal(result[:3], expected_pos)
 
     def test_known_point_x_axis(self):
         """
@@ -136,41 +139,70 @@ class TestCameraToRobot:
         transformation_matrix = _expected_transform()
         point = np.array([100.0, 0.0, 0.0])
         expected = (transformation_matrix @ np.append(point, 1.0))[:3]
-        result = camera_to_robot(point)
-        np.testing.assert_array_almost_equal(result, expected)
+        result = camera_to_robot(point, cam_yaw_deg=0.0)
+        np.testing.assert_array_almost_equal(result[:3], expected)
 
     def test_known_point_y_axis(self):
         transformation_matrix = _expected_transform()
         point = np.array([0.0, 100.0, 0.0])
-        expected = (transformation_matrix @ np.append(point, 1.0))[:3]
-        result = camera_to_robot(point)
-        np.testing.assert_array_almost_equal(result, expected)
+        expected_pos = (transformation_matrix @ np.append(point, 1.0))[:3]
+        result = camera_to_robot(point, cam_yaw_deg=0.0)
+        np.testing.assert_array_almost_equal(result[:3], expected_pos)
 
     def test_known_point_z_axis(self):
         transformation_matrix = _expected_transform()
         point = np.array([0.0, 0.0, 100.0])
-        expected = (transformation_matrix @ np.append(point, 1.0))[:3]
-        result = camera_to_robot(point)
-        np.testing.assert_array_almost_equal(result, expected)
+        expected_pos = (transformation_matrix @ np.append(point, 1.0))[:3]
+        result = camera_to_robot(point, cam_yaw_deg=0.0)
+        np.testing.assert_array_almost_equal(result[:3], expected_pos)
 
     def test_known_point_general(self):
         """Realistic detection: [50, -30, 0] mm in camera frame."""
         transformation_matrix = _expected_transform()
         point = np.array([50.0, -30.0, 0.0])
-        expected = (transformation_matrix @ np.append(point, 1.0))[:3]
-        result = camera_to_robot(point)
-        np.testing.assert_array_almost_equal(result, expected)
+        expected_pos = (transformation_matrix @ np.append(point, 1.0))[:3]
+        result = camera_to_robot(point, cam_yaw_deg=0.0)
+        np.testing.assert_array_almost_equal(result[:3], expected_pos)
 
     def test_output_shape(self):
-        result = camera_to_robot(np.array([10.0, 20.0, 30.0]))
-        assert result.shape == (3,)
+        result = camera_to_robot(np.array([10.0, 20.0, 30.0]), cam_yaw_deg=0.0)
+        assert result.shape == (6,)
 
     def test_negative_coordinates(self):
         transformation_matrix = _expected_transform()
         point = np.array([-25.0, 80.0, -50.0])
-        expected = (transformation_matrix @ np.append(point, 1.0))[:3]
-        result = camera_to_robot(point)
-        np.testing.assert_array_almost_equal(result, expected)
+        expected_pos = (transformation_matrix @ np.append(point, 1.0))[:3]
+        result = camera_to_robot(point, cam_yaw_deg=0.0)
+        np.testing.assert_array_almost_equal(result[:3], expected_pos)
+
+    def test_with_optional_yaw_returns_orientation(self):
+        point = np.array([10.0, 20.0, 30.0])
+        yaw_deg = 45.0
+
+        result = camera_to_robot(point, cam_yaw_deg=yaw_deg)
+
+        assert result.shape == (6,)
+        expected_rotation = build_rotation_matrix(0.0, 0.0, -np.deg2rad(yaw_deg)) @ axis_angle_to_rotation_matrix(
+            np.array(FALLBACK_DOWNWARD_ORIENTATION, dtype=float)
+        )
+        result_rotation = axis_angle_to_rotation_matrix(result[3:6])
+        np.testing.assert_array_almost_equal(result_rotation, expected_rotation)
+
+    def test_zero_yaw_uses_tool_down_orientation(self):
+        result = camera_to_robot(np.array([0.0, 0.0, 0.0]), cam_yaw_deg=0.0)
+        result_rotation = axis_angle_to_rotation_matrix(result[3:6])
+        expected_rotation = axis_angle_to_rotation_matrix(
+            np.array(FALLBACK_DOWNWARD_ORIENTATION, dtype=float)
+        )
+        np.testing.assert_array_almost_equal(result_rotation, expected_rotation)
+
+    def test_camera_to_robot_orientation_inverts_yaw(self):
+        yaw_deg = 30.0
+        result_rotation = axis_angle_to_rotation_matrix(camera_to_robot_orientation(yaw_deg))
+        expected_rotation = build_rotation_matrix(0.0, 0.0, -np.deg2rad(yaw_deg)) @ axis_angle_to_rotation_matrix(
+            np.array(FALLBACK_DOWNWARD_ORIENTATION, dtype=float)
+        )
+        np.testing.assert_array_almost_equal(result_rotation, expected_rotation)
 
 
 class TestRobotToCamera:
@@ -210,7 +242,7 @@ class TestRoundTrip:
     def test_camera_robot_camera_roundtrip(self, point):
         """camera_to_robot → robot_to_camera must recover original point."""
         p = np.array(point, dtype=float)
-        result = robot_to_camera(camera_to_robot(p))
+        result = robot_to_camera(camera_to_robot(p, cam_yaw_deg=0.0)[:3])
         np.testing.assert_array_almost_equal(result, p, decimal=6)
 
     @pytest.mark.parametrize("point", [
@@ -221,5 +253,5 @@ class TestRoundTrip:
     def test_robot_camera_robot_roundtrip(self, point):
         """robot_to_camera → camera_to_robot must recover original point."""
         p = np.array(point, dtype=float)
-        result = camera_to_robot(robot_to_camera(p))
+        result = camera_to_robot(robot_to_camera(p), cam_yaw_deg=0.0)[:3]
         np.testing.assert_array_almost_equal(result, p, decimal=6)
