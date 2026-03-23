@@ -31,10 +31,10 @@ FALLBACK_DOWNWARD_ORIENTATION = [0.0, float(np.pi), 0.0]  # axis-angle, radians
 
 # Robot workspace bounds (meters) - UR5e approximate reachable workspace
 # These define the Cartesian space we allow moveL commands to target
-ROBOT_WORKSPACE_X_MIN = 0.0      # meters (avoid reaching behind base)
-ROBOT_WORKSPACE_X_MAX = 1.0      # meters (UR5e reach ~0.85m, with margin)
-ROBOT_WORKSPACE_Y_MIN = -1.0     # meters
-ROBOT_WORKSPACE_Y_MAX = 1.0      # meters
-ROBOT_WORKSPACE_Z_MIN = 0.0      # meters (stay above table/floor)
-ROBOT_WORKSPACE_Z_MAX = 1.5      # meters (comfortable work height)
+ROBOT_WORKSPACE_X_MIN = -0.75      # meters (avoid reaching behind base)
+ROBOT_WORKSPACE_X_MAX = 0.75      # meters (UR5e reach ~0.85m, with margin)
+ROBOT_WORKSPACE_Y_MIN = -0.75     # meters
+ROBOT_WORKSPACE_Y_MAX = 0.75      # meters
+ROBOT_WORKSPACE_Z_MIN = 0.0       # meters (stay above table/floor)
+ROBOT_WORKSPACE_Z_MAX = 0.75      # meters (comfortable work height)
 
