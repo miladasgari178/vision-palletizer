@@ -125,6 +125,10 @@ A visual demonstration of the system (robot motion, coordinate transformation, a
 
 > The video shows UR5e pick-and-place into a grid.
 
+👉 [Watch the demo](https://www.youtube.com/watch?v=7nrU5fDtYYI)
+
+> The video shows UR5e pick-and-place into a grid while grasping the boxes with different orientations.
+
 ---
 
 ### Assumptions
