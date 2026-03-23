@@ -105,7 +105,6 @@ class MotionController:
         Returns:
             True if move completed successfully.
         """
-        import time
         result = self._move_joint(HOME_JOINTS)
         if result:
             # Cache TCP orientation after homing for entire pick/place cycle
