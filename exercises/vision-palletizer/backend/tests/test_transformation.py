@@ -40,6 +40,18 @@ def _expected_transform() -> np.ndarray:
     return build_homogeneous_transform(rotation_matrix, t)
 
 
+def _expected_tcp_rotation(cam_yaw_deg: float) -> np.ndarray:
+    """Build expected TCP rotation from camera yaw using camera extrinsics."""
+    R_cam_to_robot = build_rotation_matrix(
+        np.deg2rad(CAMERA_ROLL_DEG),
+        np.deg2rad(CAMERA_PITCH_DEG),
+        np.deg2rad(CAMERA_YAW_DEG),
+    )
+    R_obj_cam = build_rotation_matrix(0.0, 0.0, np.deg2rad(cam_yaw_deg))
+    R_down = axis_angle_to_rotation_matrix(np.array(FALLBACK_DOWNWARD_ORIENTATION, dtype=float))
+    return (R_cam_to_robot @ R_obj_cam) @ R_down
+
+
 class TestBuildRotationMatrix:
     def test_zero_angles_gives_identity(self):
         rotation_matrix = build_rotation_matrix(0.0, 0.0, 0.0)
@@ -182,26 +194,20 @@ class TestCameraToRobot:
         result = camera_to_robot(point, cam_yaw_deg=yaw_deg)
 
         assert result.shape == (6,)
-        expected_rotation = build_rotation_matrix(0.0, 0.0, -np.deg2rad(yaw_deg)) @ axis_angle_to_rotation_matrix(
-            np.array(FALLBACK_DOWNWARD_ORIENTATION, dtype=float)
-        )
+        expected_rotation = _expected_tcp_rotation(yaw_deg)
         result_rotation = axis_angle_to_rotation_matrix(result[3:6])
         np.testing.assert_array_almost_equal(result_rotation, expected_rotation)
 
     def test_zero_yaw_uses_tool_down_orientation(self):
         result = camera_to_robot(np.array([0.0, 0.0, 0.0]), cam_yaw_deg=0.0)
         result_rotation = axis_angle_to_rotation_matrix(result[3:6])
-        expected_rotation = axis_angle_to_rotation_matrix(
-            np.array(FALLBACK_DOWNWARD_ORIENTATION, dtype=float)
-        )
+        expected_rotation = _expected_tcp_rotation(0.0)
         np.testing.assert_array_almost_equal(result_rotation, expected_rotation)
 
-    def test_camera_to_robot_orientation_inverts_yaw(self):
+    def test_camera_to_robot_orientation_matches_extrinsic_mapping(self):
         yaw_deg = 30.0
         result_rotation = axis_angle_to_rotation_matrix(camera_to_robot_orientation(yaw_deg))
-        expected_rotation = build_rotation_matrix(0.0, 0.0, -np.deg2rad(yaw_deg)) @ axis_angle_to_rotation_matrix(
-            np.array(FALLBACK_DOWNWARD_ORIENTATION, dtype=float)
-        )
+        expected_rotation = _expected_tcp_rotation(yaw_deg)
         np.testing.assert_array_almost_equal(result_rotation, expected_rotation)
 
 

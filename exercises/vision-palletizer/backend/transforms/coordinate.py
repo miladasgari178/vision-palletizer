@@ -109,15 +109,18 @@ def rotation_matrix_to_axis_angle(rotation_matrix: np.ndarray) -> np.ndarray:
         diagonal = np.diag(rotation_matrix)
         axis = np.sqrt(np.maximum((diagonal + 1.0) / 2.0, 0.0))
 
-        if axis[0] > 1e-6:
-            axis[1] = rotation_matrix[0, 1] / (2.0 * axis[0])
-            axis[2] = rotation_matrix[0, 2] / (2.0 * axis[0])
-        elif axis[1] > 1e-6:
-            axis[0] = rotation_matrix[0, 1] / (2.0 * axis[1])
-            axis[2] = rotation_matrix[1, 2] / (2.0 * axis[1])
+        # At 180 degrees, recover missing components from symmetric off-diagonals.
+        if axis[0] >= axis[1] and axis[0] >= axis[2] and axis[0] > 1e-6:
+            axis[1] = (rotation_matrix[0, 1] + rotation_matrix[1, 0]) / (4.0 * axis[0])
+            axis[2] = (rotation_matrix[0, 2] + rotation_matrix[2, 0]) / (4.0 * axis[0])
+        elif axis[1] >= axis[2] and axis[1] > 1e-6:
+            axis[0] = (rotation_matrix[0, 1] + rotation_matrix[1, 0]) / (4.0 * axis[1])
+            axis[2] = (rotation_matrix[1, 2] + rotation_matrix[2, 1]) / (4.0 * axis[1])
+        elif axis[2] > 1e-6:
+            axis[0] = (rotation_matrix[0, 2] + rotation_matrix[2, 0]) / (4.0 * axis[2])
+            axis[1] = (rotation_matrix[1, 2] + rotation_matrix[2, 1]) / (4.0 * axis[2])
         else:
-            axis[0] = rotation_matrix[0, 2] / (2.0 * axis[2])
-            axis[1] = rotation_matrix[1, 2] / (2.0 * axis[2])
+            axis = np.array([0.0, 1.0, 0.0], dtype=float)
 
         axis_norm = np.linalg.norm(axis)
         if axis_norm < 1e-12:
