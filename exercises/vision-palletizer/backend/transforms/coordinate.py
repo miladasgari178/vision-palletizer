@@ -231,9 +231,38 @@ def camera_to_robot_orientation(cam_yaw_deg: float) -> np.ndarray:
     Returns:
         [rx, ry, rz] axis-angle orientation in robot frame (radians).
     """
-    downward_rotation = axis_angle_to_rotation_matrix(
+def camera_to_robot_orientation(cam_yaw_deg: float) -> np.ndarray:
+    """
+    Convert camera-frame object yaw into robot TCP axis-angle orientation,
+    correctly accounting for camera extrinsics.
+
+    Args:
+        cam_yaw_deg: Object yaw in camera frame (degrees)
+
+    Returns:
+        [rx, ry, rz] axis-angle orientation in robot frame (radians)
+    """
+
+    # 1. Camera → Robot rotation (extrinsics)
+    roll = np.deg2rad(CAMERA_ROLL_DEG)
+    pitch = np.deg2rad(CAMERA_PITCH_DEG)
+    yaw = np.deg2rad(CAMERA_YAW_DEG)
+
+    R_cam_to_robot = build_rotation_matrix(roll, pitch, yaw)
+
+    # 2. Object rotation in camera frame (yaw around camera Z)
+    R_obj_cam = build_rotation_matrix(0.0, 0.0, np.deg2rad(cam_yaw_deg))
+
+    # 3. Transform object orientation into robot frame
+    R_obj_robot = R_cam_to_robot @ R_obj_cam
+
+    # 4. Downward tool orientation (gripper pointing down)
+    R_down = axis_angle_to_rotation_matrix(
         np.array(FALLBACK_DOWNWARD_ORIENTATION, dtype=float)
     )
-    yaw_rotation = build_rotation_matrix(0.0, 0.0, -np.deg2rad(cam_yaw_deg))
-    tcp_rotation = yaw_rotation @ downward_rotation
+
+    # 5. Combine: align tool with object while keeping it downward
+    tcp_rotation = R_obj_robot @ R_down
+
+    # 6. Convert to axis-angle for robot
     return rotation_matrix_to_axis_angle(tcp_rotation)
