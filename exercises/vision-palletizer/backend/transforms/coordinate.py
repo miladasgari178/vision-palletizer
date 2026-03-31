@@ -219,20 +219,6 @@ def robot_to_camera(point_robot: np.ndarray) -> np.ndarray:
 
 def camera_to_robot_orientation(cam_yaw_deg: float) -> np.ndarray:
     """
-    Convert camera-frame box yaw to robot TCP axis-angle orientation.
-
-    The robot motion layer expects axis-angle orientation, and the TCP should
-    stay tool-down during picking. Positive camera yaw is inverted because the
-    TCP approaches the box from the opposite direction of the camera view.
-
-    Args:
-        cam_yaw_deg: Box yaw in camera frame (degrees).
-
-    Returns:
-        [rx, ry, rz] axis-angle orientation in robot frame (radians).
-    """
-def camera_to_robot_orientation(cam_yaw_deg: float) -> np.ndarray:
-    """
     Convert camera-frame object yaw into robot TCP axis-angle orientation,
     correctly accounting for camera extrinsics.
 
